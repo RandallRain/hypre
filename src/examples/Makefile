@@ -62,7 +62,7 @@ CXXOPTS = $(COPTS) -Wno-deprecated
 CXXINCLUDES = $(CINCLUDES) -I..
 CXXDEFS = $(CDEFS)
 IFLAGS_BXX =
-CXXFLAGS  = $(CXXOPTS) $(CXXINCLUDES) $(CXXDEFS) $(IFLAGS_BXX)
+CXXFLAGS  = $(CXXOPTS) $(CXXINCLUDES) $(CXXDEFS) $(IFLAGS_BXX) --std=c++11
 IF90FLAGS =
 F90FLAGS = $(FFLAGS) $(IF90FLAGS)
 
@@ -82,7 +82,7 @@ LFLAGS90 =
 ########################################################################
 # Rules for compiling the source files
 ########################################################################
-.SUFFIXES: .c .f .cuf .cxx
+.SUFFIXES: .c .f .cuf .cxx .cpp
 
 .c.o:
 	$(CC) $(CFLAGS) -c $<
@@ -93,6 +93,8 @@ LFLAGS90 =
 .cuf.o:
 	$(CUF) $(FFLAGS) $(CUFFLAGS) -c $<
 .cxx.o:
+	$(CXX) $(CXXFLAGS) -c $<
+.cpp.o:
 	$(CXX) $(CXXFLAGS) -c $<
 
 ########################################################################
@@ -280,6 +282,12 @@ ex18: ex18.o
 ########################################################################
 ex18comp: ex18comp.o
 	$(LINK_CC) -o $@ $^ $(LFLAGS)
+
+########################################################################
+# Couple Tests.
+########################################################################
+couple_test: couple_test.o
+	$(LINK_CXX) -o $@ $^ $(LFLAGS)
 
 ########################################################################
 # Clean up
