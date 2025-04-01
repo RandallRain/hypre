@@ -288,6 +288,8 @@ ex18comp: ex18comp.o
 ########################################################################
 couple_test: couple_test.o
 	$(LINK_CXX) -o $@ $^ $(LFLAGS)
+couple_test1: couple_test1.o
+	$(LINK_CXX) -o $@ $^ $(LFLAGS)
 
 ########################################################################
 # Clean up

@@ -1,12 +1,12 @@
 /**
-* @file couple_test.cpp
-* @brief Test BoomerAMG ability to solve the System of PDEs using 2D Stokes problem.
+* @file couple_test1.cpp
+* @brief Test the GMRES sovler ability to solve the System of PDEs using 2D Stokes problem.
 * There are three forms of matrix:
 * - The saddle point form.
 * - the weakly coupled form.
 * - the strongly coupled form.
 * @author LHT
-* @date 2025-03-19
+* @date 2025-04-01
 */
 
 #include <iostream>
@@ -32,17 +32,9 @@ enum class MatrixForm
     StronglyCoupled = 2
 };
 
-// Hypre BoomerAMG solver types.
-enum class SolverType
-{
-    UnknownBased = 0,
-    NodeBased = 1
-};
-
 // Global variables.
 int g_pde_size = 3; ///< number of unknowns at each grid point.
 MatrixForm g_matrix_form = MatrixForm::StronglyCoupled; ///< matrix form.
-SolverType g_solver_type = SolverType::NodeBased; ///< solver type.
 bool g_print_matrix = false; ///< print the matrix to a file.
 
 /**
@@ -393,7 +385,7 @@ int main(int argc, char *argv[])
     HYPRE_ParVector par_b, par_x;
     
     if (myid == 0) {
-        std::cout << "Testing BoomerAMG on 2D Stokes problem" << std::endl;
+        std::cout << "Testing GMRES on 2D Stokes problem" << std::endl;
         std::cout << "Grid size: " << (n + 1) << " x " << (n + 1) << std::endl;
         std::cout << "System size(Unknows): " << (3*(n-1)*(n-1)) << std::endl;
     }
@@ -434,60 +426,40 @@ int main(int argc, char *argv[])
     HYPRE_IJVectorGetObject(x, (void**) &par_x);
     
 
-    // Create a BoomerAMG solver.
+    /**********************************************************
+    * Setup a GMRES solver.
+    ***********************************************************/
     HYPRE_Solver solver;
-    HYPRE_BoomerAMGCreate(&solver);
-    
-    // Configure the solver.
-    HYPRE_BoomerAMGSetMaxIter(solver, 500);        ///< max iterations as a solver.
-    HYPRE_BoomerAMGSetTol(solver, 1e-7);           ///< convergence tolerance.
-    HYPRE_BoomerAMGSetPrintLevel(solver, 3);        ///< more detailed output.
-    if (g_solver_type == SolverType::UnknownBased)
-    {
-        // For weakly coupled PDEs.
-        HYPRE_BoomerAMGSetCoarsenType(solver, 10);      ///< HMIS coarsening.
-        HYPRE_BoomerAMGSetInterpType(solver, 6);        ///< extended+i interpolation.
-        HYPRE_BoomerAMGSetPMaxElmts(solver, 4);         ///< max elements per row for interp.
-        HYPRE_BoomerAMGSetAggNumLevels(solver, 0);      ///< no Aggressive coarsening.
-        // HYPRE_BoomerAMGSetRelaxType(solver, 16);        ///< relaxation type.
-        HYPRE_BoomerAMGSetNumSweeps(solver, 2);         ///< sweeps on each level.
-    }
-
-    if (g_solver_type == SolverType::NodeBased)
-    {
-        // For strongly coupled PDEs.
-        HYPRE_BoomerAMGSetCoarsenType(solver, 10);      ///< HMIS coarsening.
-        HYPRE_BoomerAMGSetInterpType(solver, 10);       ///< classical block interpolation.
-        //HYPRE_BoomerAMGSetRelaxType(solver, 16);        ///< Chebyshev relaxation.
-        HYPRE_BoomerAMGSetNumSweeps(solver, 2);         ///< sweeps on each level.
-        HYPRE_BoomerAMGSetNumFunctions(solver, g_pde_size); ///< num of variables per grid point.
-        HYPRE_BoomerAMGSetNodal(solver, 1);             ///< Nodal systems approach.
-    }
+    HYPRE_ParCSRGMRESCreate(MPI_COMM_WORLD, &solver);
+    HYPRE_GMRESSetKDim(solver, 30);             ///< Restart dimension.
+    HYPRE_GMRESSetMaxIter(solver, 500);         ///< Max iterations
+    HYPRE_GMRESSetTol(solver, 1e-6);            ///< Convergence tolerance.
+    HYPRE_GMRESSetPrintLevel(solver, 2);        ///< Print convergence info level.
 
     // Setup the solver.
     if (myid == 0)
-        std::cout << "Begin BoomerAMG Setup." << std::endl;
+        std::cout << "Begin GMRES Setup." << std::endl;
     start = clock();
-    HYPRE_BoomerAMGSetup(solver, parcsr_A, par_b, par_x);
+    HYPRE_ParCSRGMRESSetup(solver, parcsr_A, par_b, par_x);
     end = clock();
     setup_time = ((double)(end - start)) / CLOCKS_PER_SEC;
     
     if (myid == 0)
-        std::cout << "BoomerAMG Setup time: " << setup_time << " seconds" << std::endl;
+        std::cout << "GMRES Setup time: " << setup_time << " seconds" << std::endl;
     
     // Solve the system.
     if (myid == 0)
-        std::cout << "Begin BoomerAMG Solve." << std::endl;
+        std::cout << "Begin GMRES Solve." << std::endl;
     start = clock();
-    HYPRE_BoomerAMGSolve(solver, parcsr_A, par_b, par_x);
+    HYPRE_ParCSRGMRESSolve(solver, parcsr_A, par_b, par_x);
     end = clock();
     solve_time = ((double)(end - start)) / CLOCKS_PER_SEC;
     
     // Get convergence info.
     double final_res_norm;
     int num_iterations;
-    HYPRE_BoomerAMGGetNumIterations(solver, &num_iterations);
-    HYPRE_BoomerAMGGetFinalRelativeResidualNorm(solver, &final_res_norm);
+    HYPRE_GMRESGetNumIterations(solver, &num_iterations);
+    HYPRE_GMRESGetFinalRelativeResidualNorm(solver, &final_res_norm);
     
     // Summary.
     if (myid == 0) 
@@ -504,23 +476,13 @@ int main(int argc, char *argv[])
                 std::cout << "The system is in strongly coupled form." << std::endl;
                 break;
         }
-
-        switch (g_solver_type)
-        {
-            case SolverType::UnknownBased:
-                std::cout << "The solver is unknown based." << std::endl;
-                break;
-            case SolverType::NodeBased:
-                std::cout << "The solver is node based." << std::endl;
-                break;
-        }
-        std::cout << "BoomerAMG Solve time: " << solve_time << " seconds" << std::endl;
+        std::cout << "GMRES Solve time: " << solve_time << " seconds" << std::endl;
         std::cout << "Number of iterations: " << num_iterations << std::endl;
         std::cout << "Final relative residual norm: " << final_res_norm << std::endl;
     }
     
     // Clean up.
-    HYPRE_BoomerAMGDestroy(solver);
+    HYPRE_ParCSRGMRESDestroy(solver);
     HYPRE_IJMatrixDestroy(A);
     HYPRE_IJVectorDestroy(b);
     HYPRE_IJVectorDestroy(x);
