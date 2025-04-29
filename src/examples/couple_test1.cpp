@@ -431,10 +431,32 @@ int main(int argc, char *argv[])
     ***********************************************************/
     HYPRE_Solver solver;
     HYPRE_ParCSRGMRESCreate(MPI_COMM_WORLD, &solver);
-    HYPRE_GMRESSetKDim(solver, 30);             ///< Restart dimension.
+    // HYPRE_ParCSRCOGMRESSetCGS()
+    HYPRE_GMRESSetKDim(solver, 10);             ///< Restart dimension.
     HYPRE_GMRESSetMaxIter(solver, 500);         ///< Max iterations
-    HYPRE_GMRESSetTol(solver, 1e-6);            ///< Convergence tolerance.
+    HYPRE_GMRESSetTol(solver, 1e-8);            ///< Convergence tolerance.
     HYPRE_GMRESSetPrintLevel(solver, 2);        ///< Print convergence info level.
+    HYPRE_GMRESSetLogging(solver, 1);        ///< Enable logging.
+
+    /**********************************************************
+    * Setup a preconditioner.
+    ***********************************************************/
+    HYPRE_Solver precond;
+    HYPRE_ILUCreate(&precond);
+    HYPRE_ILUSetType(precond, 1);    /* 1 = block-Jacobi ILUT */
+    HYPRE_ILUSetMaxIter(precond, 1);    /* one sweep as precond */
+    HYPRE_ILUSetTol(precond, 0.0);   /* exact ILU application */
+    HYPRE_ILUSetLocalReordering(precond, 1);    /* RCM for better fill */
+    HYPRE_ILUSetLevelOfFill(precond, 0);    /* zero extra fill (ILU(0)) */
+    HYPRE_ILUSetDropThreshold(precond, 1e-3);    /* drop tiny entries */
+    HYPRE_ILUSetPrintLevel(precond, 2);    /* print solve info */
+    HYPRE_ILUSetMaxNnzPerRow(precond, 1000);  /* Maximum nonzeros per row for ILUT */
+    
+    // Add the preconditoioner to the solver.
+    HYPRE_ParCSRGMRESSetPrecond(solver,
+        (HYPRE_PtrToParSolverFcn) HYPRE_ILUSolve,
+        (HYPRE_PtrToParSolverFcn) HYPRE_ILUSetup,
+        precond);
 
     // Setup the solver.
     if (myid == 0)
@@ -483,6 +505,7 @@ int main(int argc, char *argv[])
     
     // Clean up.
     HYPRE_ParCSRGMRESDestroy(solver);
+    HYPRE_ILUDestroy(precond);
     HYPRE_IJMatrixDestroy(A);
     HYPRE_IJVectorDestroy(b);
     HYPRE_IJVectorDestroy(x);
